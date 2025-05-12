@@ -1,0 +1,205 @@
+---
+title: "Variation Report"
+author: "Josh Bauman"
+date: "2025-05-04"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+load("~/Desktop/Andersen Rotation/variantplotting.RData")
+```
+
+```{r, include = FALSE}
+if(args_species == "c_elegans"){
+  species <- "C. elegans"
+}
+
+```
+
+
+### Variation Plot
+
+Genes are plotted in **<span style="color:#e5e5e5; text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000;"> light gray </span>** (+ strand) and **<span style="color:#7f7f7f; text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000;"> dark gray </span>** (- strand)
+
+SNPs are plotted in **black**
+
+Deletions are plotted in **<span style="color:red">red</span>**
+
+Insertions are plotted in **<span style="color:blue">blue</span>**, insertions larger than **50 bp** are labelled.
+
+Inversions are plotted with **black brackets []**
+
+
+#### *`r species`* `r args_strain` Chr `r args_chrom`:`r args_start`-`r args_stop`
+```{r fig.width=7.5, fig.height=2, dpi=600, echo = FALSE}
+combined_plot2
+```
+
+
+### SNV Data Table
+```{r echo = FALSE}
+
+#Convert transcript names to gene names
+library(biomaRt)
+
+# Use WormBase Ensembl BioMart
+ensembl <- useMart("ensembl", dataset = "celegans_gene_ensembl")
+
+SNP_report$`Overlapping gene` <- sub("^Transcript_", "", SNP_report$`Overlapping gene`)
+
+
+gene_ids <- c()
+for(i in 1:nrow(SNP_report)){
+  row <- SNP_report[i,]
+  table_gene <- row$`Overlapping gene`
+  if(!is.na(table_gene)){
+    tryCatch(
+      {gene_info <- getBM(
+        attributes = c("wormbase_cds", "external_gene_name"),
+        filters = "wormbase_cds",
+        values = table_gene,
+        mart = ensembl
+      )}, error = function(e){gene_name <- table_gene}
+    )
+      gene_name <- gene_info$external_gene_name
+     if(nrow(gene_info) == 0){
+       gene_name <- table_gene
+     }
+  }else{
+    gene_name <- NA_character_
+    }
+  gene_ids <- c(gene_ids, gene_name)
+}
+SNP_report$`Overlapping gene` <- gene_ids
+library(DT)
+datatable(SNP_report %>%
+            dplyr::select(CHROM, POS, REF, ALT, `BCSQ Annotation`, `ANNOVAR Annotation`, `Overlapping gene`),
+         options = list(
+            scrollX = TRUE,
+            scrollY = "400px",
+            paging = FALSE 
+          ),
+          rownames = FALSE, 
+          width = 800
+         )
+```
+
+
+### SNV Annotation plot
+```{r fig.width=7.5, fig.height=2.5, dpi=600, echo = FALSE}
+combined_plot2_annot
+```
+
+
+### Deletion Data Table
+```{r echo = FALSE, warning=FALSE, message=FALSE}
+library(readr)
+library(dplyr)
+
+#Trim Ref/Alt colummns for displaying data table 
+deletions_report$REF <- ifelse(
+  nchar(deletions_report$REF) > 10,
+  paste0(substr(deletions_report$REF, 1, 10), "..."),
+  deletions_report$REF
+)
+
+deletions_report$gene <- sub("^Transcript_", "", deletions_report$gene)
+
+
+#Convert transcript names to gene names
+
+gene_ids <- c()
+for(i in 1:nrow(deletions_report)){
+  row <- deletions_report[i,]
+  table_gene <- row$gene
+  if(!is.na(table_gene)){
+    gene_info <- getBM(
+      attributes = c("wormbase_cds", "external_gene_name"),
+      filters = "wormbase_cds",
+      values = table_gene,
+      mart = ensembl
+    )
+     gene_name <- gene_info$external_gene_name
+     if(nrow(gene_info) == 0){
+       gene_name <- table_gene
+     }
+  }else{
+    gene_name <- NA_character_
+    }
+  gene_ids <- c(gene_ids, gene_name)
+}
+deletions_report$gene <- gene_ids
+
+library(DT)
+datatable(
+  deletions_report %>% dplyr::select(CHROM, START, END, REF, ALT, Var_length, called_by, gene) %>%
+    dplyr::rename("Variant length" = Var_length) %>%
+    dplyr::rename("Called by" = called_by) %>%
+    dplyr::rename("Overlapping gene" = gene),
+          options = list(
+            scrollX = TRUE,
+            scrollY = "400px",
+            paging = FALSE 
+          ),
+          rownames = FALSE, 
+          width = 800
+      )
+```
+
+
+### Insertion Data Table
+```{r echo = FALSE, warning=FALSE, message=FALSE}
+library(readr)
+library(dplyr)
+
+insertions_report$ALT <- ifelse(
+  nchar(insertions_report$ALT) > 10,
+  paste0(substr(insertions_report$ALT, 1, 10), "..."),
+  insertions_report$ALT
+)
+
+insertions_report$gene <- sub("^Transcript_", "", insertions_report$gene)
+
+##input seq_ids into wormbase
+
+gene_ids <- c()
+for(i in 1:nrow(insertions_report)){
+  row <- insertions_report[i,]
+  table_gene <- row$gene
+  if(!is.na(table_gene)){
+    tryCatch(
+      {gene_info <- getBM(
+        attributes = c("wormbase_cds", "external_gene_name"),
+        filters = "wormbase_cds",
+        values = table_gene,
+        mart = ensembl
+      )}, error = function(e){gene_name <- table_gene}
+    )
+      gene_name <- gene_info$external_gene_name
+     if(nrow(gene_info) == 0){
+       gene_name <- table_gene
+     }
+  }else{
+    gene_name <- NA_character_
+    }
+  gene_ids <- c(gene_ids, gene_name)
+}
+insertions_report$gene <- gene_ids
+
+
+library(DT)
+datatable(insertions_report %>%
+            dplyr::select(CHROM, POS, REF, ALT, Var_length, called_by, gene) %>%
+            dplyr::rename("Variant length" = Var_length) %>%
+            dplyr::rename("Called by" = called_by) %>%
+            dplyr::rename("Overlapping gene" = gene),
+          options = list(
+            scrollX = TRUE,
+            scrollY = "400px",
+            paging = FALSE 
+          ),
+          rownames = FALSE, 
+          width = 800)
+```
+
